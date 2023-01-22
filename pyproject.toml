@@ -2,6 +2,7 @@
 name = "aramenu"
 version = "0.1.0"
 description = ""
+authors = []
 license = "MIT"
 readme = "README.md"
 
