@@ -16,13 +16,13 @@ jobs:
     - name: Install poetry
       run: |
         curl -sSL https://install.python-poetry.org | POETRY_HOME=$HOME/.poetry python3 -
-        export PATH="$HOME/.poetry/bin:$PATH"
+        echo "PATH=$HOME/.poetry/bin:$PATH" >> $GITHUB_ENV
 
     - name: Install dependencies with poetry
       run: poetry install --no-root
 
     - name: Build artifact with py2app
-      run: python setup.py py2app
+      run: poetry run python setup.py py2app
 
     - name: Zip build artifact
       run: zip -r dist/aramenu.zip dist/aramenu.app
