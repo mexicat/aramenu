@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 
@@ -5,7 +6,7 @@ import aranet4
 import rumps
 
 
-def scan_for_devices():
+def scan_for_devices() -> set[tuple[str, str]]:
     devices = set()
 
     def add_device(advertisement):
@@ -16,7 +17,7 @@ def scan_for_devices():
     return devices
 
 
-def choose_device():
+def choose_device() -> str:
     devices = scan_for_devices()
 
     if not devices:
@@ -34,20 +35,22 @@ def choose_device():
         else:
             rumps.quit_application()
 
-    if len(devices) == 1:
-        window = rumps.Window(
-            title="Found a device",
-            message=f"Select {list(devices)[0][0]}",
-            ok="OK",
-            cancel=True,
-            dimensions=(0, 0),
-        )
-        response = window.run()
+    # Take the first device. If you have more than one, this is not the app for you (yet).
+    device = list(devices)[0]
 
-        if response.clicked:
-            return list(devices)[0][1]
-        else:
-            rumps.quit_application()
+    window = rumps.Window(
+        title="Found a device",
+        message=f"{device[0]} ({device[1]}) was found. Press OK to use this device.",
+        ok="OK",
+        cancel=True,
+        dimensions=(0, 0),
+    )
+    response = window.run()
+
+    if response.clicked:
+        return list(devices)[0][1]
+    else:
+        rumps.quit_application()
 
 
 def setup_device() -> str:
@@ -73,7 +76,26 @@ def setup_device() -> str:
     return device
 
 
-def get_status_icon(status: aranet4.client.Status):
+def reset(_):
+    window = rumps.Window(
+        title="Reset settings",
+        message=(
+            "This will delete the configuration file and quit the app. "
+            "Open it again to set up a new device. "
+            "Press OK to continue."
+        ),
+        ok="OK",
+        cancel=True,
+        dimensions=(0, 0),
+    )
+    response = window.run()
+
+    if response.clicked:
+        os.remove(os.path.expanduser("~/.aramenu/config.json"))
+        rumps.quit_application()
+
+
+def get_status_icon(status: aranet4.client.Status) -> str:
     match status.name:
         case "GREEN":
             return "🟢"
@@ -103,30 +125,32 @@ class AramenuApp(rumps.App):
 
         self.update_reading()
 
-    @rumps.timer(5)
-    def refresh(self, _):
-        if self.ago < (self.interval + 5):
-            self.ago += 5
-            self.menu["Updated"].title = f"Updated {self.ago} seconds ago"
-            return
+        # Start the refresh timer, get the interval from the reading
+        refresh_interval = getattr(self.reading, "interval", 60)
+        self.refresh = rumps.timer(refresh_interval)(self.refresh)
 
-        self.update_reading()
+    def refresh(self, _):
+        try:
+            self.update_reading()
+        except Exception as e:
+            self.error = e
+            self.set_error_state()
+            return
+        self.error = None
 
     def update_reading(self):
-        reading = aranet4.client.get_current_readings(self.current_device)
-        self.interval = reading.interval
-        self.ago = reading.ago
-        self.reading = reading
+        self.reading = aranet4.client.get_current_readings(self.current_device)
         self.update_menu()
         self.update_title()
 
     def update_menu(self):
         reading = self.reading
+        reading_time = datetime.datetime.now()
+        next_reading_time = reading_time + datetime.timedelta(seconds=reading.interval)
+
         self.menu.clear()
         self.menu = [
-            rumps.MenuItem(
-                title=f"{get_status_icon(reading.status)} CO₂: {reading.co2} ppm"
-            ),
+            rumps.MenuItem(title=f"{get_status_icon(reading.status)} CO₂: {reading.co2} ppm"),
             rumps.MenuItem(title=f"🌡️ Temperature: {reading.temperature} °C"),
             rumps.MenuItem(title=f"💧 Humidity: {reading.humidity}%"),
             rumps.MenuItem(title=f"🔻 Pressure: {reading.pressure} hPa"),
@@ -138,17 +162,39 @@ class AramenuApp(rumps.App):
                     rumps.MenuItem(title=f"Version: {reading.version}"),
                     rumps.MenuItem(title=f"Interval: {reading.interval} seconds"),
                     rumps.MenuItem(title=f"Battery: {reading.battery}%"),
+                    None,
+                    rumps.MenuItem(title="Reset settings...", callback=reset),
                 ],
             ),
-            rumps.MenuItem(title=f"Updated"),
+            rumps.MenuItem(title=f"Last reading: {reading_time.strftime('%H:%M:%S')}"),
+            rumps.MenuItem(title=f"Next reading: {next_reading_time.strftime('%H:%M:%S')}"),
             None,
-            # rumps.MenuItem(title="Quit", callback=rumps.quit_application),
+            rumps.MenuItem(title="Quit", callback=rumps.quit_application),
         ]
-        self.menu["Updated"].title = f"Updated {self.ago} seconds ago"
 
     def update_title(self):
         self.title = f"{get_status_icon(self.reading.status)} {self.reading.co2}"
 
+    def view_error(self, _):
+        window = rumps.Window(
+            title="Error",
+            message="The last reading failed with the following error.",
+            ok="OK",
+            default_text=str(self.error),
+        )
+        window.run()
+
+    def set_error_state(self):
+        self.title = "⚠️"
+        self.menu.clear()
+        self.menu = [
+            rumps.MenuItem(title="Reading failed"),
+            rumps.MenuItem(title="View error...", callback=self.view_error),
+            rumps.MenuItem(title="Refresh", callback=self.refresh),
+            None,
+            rumps.MenuItem(title="Quit", callback=rumps.quit_application),
+        ]
+
 
 if __name__ == "__main__":
-    AramenuApp("Aramenu").run(debug=True)
+    AramenuApp("Aramenu").run(debug=False)
