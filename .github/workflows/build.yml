@@ -1,0 +1,49 @@
+name: Build App
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-12
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Install poetry
+      run: |
+        curl -sSL https://install.python-poetry.org | POETRY_HOME=$HOME/.poetry python3 -
+        export PATH="$HOME/.poetry/bin:$PATH"
+
+    - name: Install dependencies with poetry
+      run: poetry install --no-root
+
+    - name: Build artifact with py2app
+      run: python setup.py py2app
+
+    - name: Zip build artifact
+      run: zip -r dist/aramenu.zip dist/aramenu.app
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: true
+        prerelease: true
+
+    - name: Upload release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: dist/aramenu.zip
+        asset_name: aramenu.zip
+        asset_content_type: application/zip
