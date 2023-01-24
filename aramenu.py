@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import os
@@ -139,7 +140,9 @@ class AramenuApp(rumps.App):
         self.error = None
 
     def update_reading(self):
-        self.reading = aranet4.client.get_current_readings(self.current_device)
+        loop = asyncio.get_event_loop()
+        task = loop.create_task(aranet4.client._current_reading(self.current_device))
+        self.reading = loop.run_until_complete(task)
         self.update_menu()
         self.update_title()
 
