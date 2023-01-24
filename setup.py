@@ -12,6 +12,7 @@ DATA_FILES = []
 OPTIONS = {
     "plist": {
         "LSUIElement": True,
+        "NSBluetoothAlwaysUsageDescription": "This app needs Bluetooth to connect to your Aranet4 device.",
     },
     "packages": ["rumps", "aranet4"],
 }
